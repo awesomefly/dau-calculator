@@ -1,6 +1,12 @@
 <script setup>
-import { onMounted, onBeforeUnmount, ref, computed, watchEffect } from 'vue';
+import { ref, computed, watchEffect } from 'vue';
 import * as echarts from 'echarts';
+import {
+  buildRetentionData,
+  fitRetentionCurve,
+  forecastDau,
+  retentionRate,
+} from './model.js';
 
 import {
   INTRO,
@@ -19,77 +25,47 @@ const lang = ref('zh');
 const newUser1dayRetentionRate = ref(40);
 const newUser7dayRetentionRate = ref(20);
 const newUser30dayRetentionRate = ref(10);
+const stockUser1dayRetentionRate = ref(80);
+const stockUser7dayRetentionRate = ref(60);
+const stockUser30dayRetentionRate = ref(40);
 const dailyNewUserCount = ref(10000);
 const retainedUserCount = ref(0);
 const forecastDayCount = ref(365);
 const finalDAU = ref(0);
 
-function linearRegression(x, y) {
-    const n = x.length;
-    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-
-    for (let i = 0; i < n; i++) {
-        sumX += x[i];
-        sumY += y[i];
-        sumXY += x[i] * y[i];
-        sumXX += x[i] * x[i];
-    }
-
-    const B = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-    const A = (sumY - B * sumX) / n;
-
-    return { A, B };
-}
-
-function powerLawRegression(x, y) {
-    const logX = x.map(Math.log);
-    const logY = y.map(Math.log);
-
-    const { A, B } = linearRegression(logX, logY);
-    const a = Math.exp(A);
-    const b = B;
-
-    return { a, b };
-}
-
-const regressionResult = computed(() => {
+const newUserRegressionResult = computed(() => {
     const retentions = [
         newUser1dayRetentionRate.value / 100,
         newUser7dayRetentionRate.value / 100,
         newUser30dayRetentionRate.value / 100
     ];
 
-    return powerLawRegression([1, 7, 30], retentions);
+    return fitRetentionCurve([1, 7, 30], retentions);
 });
 
-function calculatePowerLawData(a, b, xStart, xEnd, numPoints) {
-    const xData = [];
-    const yData = [];
-    const step = (xEnd - xStart) / (numPoints - 1);
-    for (let i = 0; i < numPoints; i++) {
-        const x = xStart + i * step;
-        const y = a * Math.pow(x, b);
-        xData.push(x);
-        yData.push(y.toFixed(4));
-    }
-    return { xData, yData };
-}
+const stockUserRegressionResult = computed(() => fitRetentionCurve(
+  [1, 7, 30],
+  [
+    stockUser1dayRetentionRate.value / 100,
+    stockUser7dayRetentionRate.value / 100,
+    stockUser30dayRetentionRate.value / 100,
+  ],
+));
 
-function downloadRetention() {
-    const { a, b } = regressionResult.value;
-    const data = calculatePowerLawData(a, b, 1, 60, 60);
+function downloadRetention(curve, filename) {
+    const data = buildRetentionData(curve, 1, 60);
 
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "day,retention\n"; // Adding header row
 
-    data.xData.forEach((item, index) => {
-        csvContent += `${item},${data.yData[index]}\n`;
+    data.forEach(([day, rate]) => {
+        csvContent += `${day},${rate.toFixed(4)}\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.href = encodedUri;
-    link.download = 'retention.csv';
+    link.download = filename;
     link.click();
 }
 
@@ -97,13 +73,12 @@ const retentionContainer = ref(null);
 let retentionChart = null;
 
 watchEffect(() => {
-  if (retentionContainer.value && regressionResult.value) {
+  if (retentionContainer.value && newUserRegressionResult.value) {
     if (!retentionChart) {
       retentionChart = echarts.init(retentionContainer.value);
     }
 
-    const { a, b } = regressionResult.value;
-    const data = calculatePowerLawData(a, b, 1, 60, 60);
+    const data = buildRetentionData(newUserRegressionResult.value, 1, 60);
 
     var option = {
         tooltip: {
@@ -135,7 +110,7 @@ watchEffect(() => {
             name: 'Retention Rate',
             type: 'line',
             smooth: true,
-            data: data.yData.map((y, i) => [data.xData[i], y]),
+            data,
             itemStyle: {
               color: '#8ED595',
             },
@@ -162,22 +137,53 @@ watchEffect(() => {
   }
 });
 
-function retentionRate(day) {
-    const { a, b } = regressionResult.value;
+const stockRetentionContainer = ref(null);
+let stockRetentionChart = null;
 
-    return a * Math.pow(day, b);
-}
+watchEffect(() => {
+  if (stockRetentionContainer.value && stockUserRegressionResult.value) {
+    if (!stockRetentionChart) {
+      stockRetentionChart = echarts.init(stockRetentionContainer.value);
+    }
+    const data = buildRetentionData(stockUserRegressionResult.value, 1, 60);
+    stockRetentionChart.setOption({
+      tooltip: {
+        trigger: 'axis',
+        formatter: params => `${params[0].axisValue}Day's ${params[0].seriesName}<br />${(params[0].data[1] * 100).toFixed(2)}%<br />`,
+      },
+      xAxis: { type: 'value', name: 'Days', minorTick: { show: true } },
+      yAxis: {
+        type: 'value',
+        name: 'Retention Rate',
+        minorTick: { show: true },
+        axisLabel: { formatter: value => `${(value * 100).toFixed(0)}%` },
+      },
+      series: [{
+        name: 'Retention Rate',
+        type: 'line',
+        smooth: true,
+        data,
+        itemStyle: { color: '#8ED595' },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgb(158, 211, 155)' },
+            { offset: 1, color: 'rgba(158, 211, 155, 0.1)' },
+          ]),
+        },
+      }],
+      grid: { left: '15%', right: '15%' },
+    });
+  }
+});
 
 function calculateFutureDAU(currentDAU, newUsers, days) {
-    let dailyDAU = [currentDAU, currentDAU + newUsers];
-    let cumulativeRetention = currentDAU + newUsers;
-
-    for (let i = 1; i <= days; i++) {
-        cumulativeRetention += retentionRate(i) * newUsers;
-        dailyDAU.push(cumulativeRetention.toFixed(0));
-    }
-
-    return dailyDAU;
+  return forecastDau({
+    currentStockDau: currentDAU,
+    dailyNewUsers: newUsers,
+    days,
+    stockRetentionRate: day => retentionRate(stockUserRegressionResult.value, day),
+    newUserRetentionRate: day => retentionRate(newUserRegressionResult.value, day),
+  });
 }
 
 function downloadDau() {
@@ -201,14 +207,14 @@ const dauContainer = ref(null);
 let dauChart = null;
 
 watchEffect(() => {
-  if (dauContainer.value && regressionResult.value) {
+  if (dauContainer.value && newUserRegressionResult.value && stockUserRegressionResult.value) {
     if (!dauChart) {
       dauChart = echarts.init(dauContainer.value);
     }
 
     const futureDAU = calculateFutureDAU(retainedUserCount.value, dailyNewUserCount.value, forecastDayCount.value);
     if (forecastDayCount.value <= futureDAU.length - 1) {
-      finalDAU.value = futureDAU[forecastDayCount.value + 1]
+      finalDAU.value = futureDAU[forecastDayCount.value]
     }
 
     const option = {
@@ -258,7 +264,7 @@ watchEffect(() => {
     <div class="part">
       <div class="title">
         <div class="num">1</div>
-        {{ RETENTION[lang].title }}
+        {{ RETENTION[lang].newUserTitle }}
         <div class="tooltip-container">
           <img alt="info" class="info" src="./assets/info.png" width="20" height="20" />
           <span class="tooltip-text">{{ RETENTION[lang].desc }}</span>
@@ -313,9 +319,9 @@ watchEffect(() => {
           </div>
         </div>
         <div class="chart">
-          <span>𝑦 = {{ regressionResult.a.toFixed(4) }}𝑥<sup>{{ regressionResult.b.toFixed(4) }}</sup></span>
+          <span>𝑦 = {{ newUserRegressionResult.a.toFixed(4) }}𝑥<sup>{{ newUserRegressionResult.b.toFixed(4) }}</sup></span>
           <div ref="retentionContainer" style="max-width: 100%; width: 420px; height: 300px;"></div>
-          <a @click="downloadRetention">{{ INTRO[lang].downloadAsCsv }}</a>
+          <a @click="downloadRetention(newUserRegressionResult, 'new-user-retention.csv')">{{ INTRO[lang].downloadAsCsv }}</a>
         </div>
       </div>
     </div>
@@ -323,6 +329,71 @@ watchEffect(() => {
     <div class="part">
       <div class="title">
         <div class="num">2</div>
+        {{ RETENTION[lang].stockUserTitle }}
+        <div class="tooltip-container">
+          <img alt="info" class="info" src="./assets/info.png" width="20" height="20" />
+          <span class="tooltip-text">{{ RETENTION[lang].desc }}</span>
+        </div>
+      </div>
+      <div class="content">
+        <div class="form">
+          <div class="item">
+            <div class="subtitle">
+              {{ RETENTION[lang].stockUser1dayRetentionRate }}
+              <div class="tooltip-container">
+                <img alt="info" class="info" src="./assets/info.png" width="12" height="12" />
+                <span class="tooltip-text">{{ RETENTION[lang].stockUser1dayRetentionRateDesc }}</span>
+              </div>
+            </div>
+            <div class="input-container small">
+              <input type="number" min="0" max="100" v-model="stockUser1dayRetentionRate" />
+              <span class="unit">%</span>
+            </div>
+            <span class="button" @click="stockUser1dayRetentionRate -= 1">-</span>
+            <span class="button" @click="stockUser1dayRetentionRate += 1">+</span>
+          </div>
+          <div class="item">
+            <div class="subtitle">
+              {{ RETENTION[lang].stockUser7dayRetentionRate }}
+              <div class="tooltip-container">
+                <img alt="info" class="info" src="./assets/info.png" width="12" height="12" />
+                <span class="tooltip-text">{{ RETENTION[lang].stockUser7dayRetentionRateDesc }}</span>
+              </div>
+            </div>
+            <div class="input-container small">
+              <input type="number" min="0" max="100" v-model="stockUser7dayRetentionRate" />
+              <span class="unit">%</span>
+            </div>
+            <span class="button" @click="stockUser7dayRetentionRate -= 1">-</span>
+            <span class="button" @click="stockUser7dayRetentionRate += 1">+</span>
+          </div>
+          <div class="item">
+            <div class="subtitle">
+              {{ RETENTION[lang].stockUser30dayRetentionRate }}
+              <div class="tooltip-container">
+                <img alt="info" class="info" src="./assets/info.png" width="12" height="12" />
+                <span class="tooltip-text">{{ RETENTION[lang].stockUser30dayRetentionRateDesc }}</span>
+              </div>
+            </div>
+            <div class="input-container small">
+              <input type="number" min="0" max="100" v-model="stockUser30dayRetentionRate" />
+              <span class="unit">%</span>
+            </div>
+            <span class="button" @click="stockUser30dayRetentionRate -= 1">-</span>
+            <span class="button" @click="stockUser30dayRetentionRate += 1">+</span>
+          </div>
+        </div>
+        <div class="chart">
+          <span>𝑦 = {{ stockUserRegressionResult.a.toFixed(4) }}𝑥<sup>{{ stockUserRegressionResult.b.toFixed(4) }}</sup></span>
+          <div ref="stockRetentionContainer" style="max-width: 100%; width: 420px; height: 300px;"></div>
+          <a @click="downloadRetention(stockUserRegressionResult, 'active-user-retention.csv')">{{ INTRO[lang].downloadAsCsv }}</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="part">
+      <div class="title">
+        <div class="num">3</div>
         {{ DAU[lang].title }}
         <div class="tooltip-container">
           <img alt="info" class="info" src="./assets/info.png" width="20" height="20" />
@@ -534,7 +605,7 @@ body {
         background-color: white;
         border-radius: 0 30px 0 0;
         clip-path: polygon(10% 0, 100% 0, 100% 100%, 0 100%);
-        width: calc(100% - 260px);
+        width: calc(100% - 340px);
         height: 60px;
       }
       .form {

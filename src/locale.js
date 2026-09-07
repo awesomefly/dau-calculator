@@ -13,43 +13,57 @@ export const INTRO = {
 
 export const RETENTION = {
   zh: {
-    title: '留存拟合曲线',
+    newUserTitle: '新用户留存曲线拟合',
+    stockUserTitle: '活跃用户留存曲线拟合',
     desc: '使用乘幂函数进行拟合，与 excel 中绘制散点图并使用乘幂函数进行拟合，是相同的。',
     newUser1dayRetentionRate: '新用户次留',
     newUser1dayRetentionRateDesc: '新用户次日留存率，当天的新用户，在第 2 天仍然活跃的比例',
     newUser7dayRetentionRate: '新用户七留',
     newUser7dayRetentionRateDesc: '新用户七日留存率，当天的新用户，在第 7 天仍然活跃的比例',
     newUser30dayRetentionRate: '新用户三十留',
-    newUser30dayRetentionRateDesc: '新用户三十日留存率，当天的新用户，在第 30 天仍然活跃的比例'
+    newUser30dayRetentionRateDesc: '新用户三十日留存率，当天的新用户，在第 30 天仍然活跃的比例',
+    stockUser1dayRetentionRate: '活跃用户次留',
+    stockUser1dayRetentionRateDesc: '当前活跃用户在预测第 1 天仍然活跃的比例',
+    stockUser7dayRetentionRate: '活跃用户七留',
+    stockUser7dayRetentionRateDesc: '当前活跃用户在预测第 7 天仍然活跃的比例',
+    stockUser30dayRetentionRate: '活跃用户三十留',
+    stockUser30dayRetentionRateDesc: '当前活跃用户在预测第 30 天仍然活跃的比例'
   },
   en: {
-    title: 'Retention Curve',
+    newUserTitle: 'New User Retention Curve',
+    stockUserTitle: 'Active User Retention Curve',
     desc: 'Fitting with a power function, the same as plotting a scatter chart in Excel and fitting it with a power function.',
     newUser1dayRetentionRate: 'New user 1-day retention',
     newUser1dayRetentionRateDesc: 'The 1-day retention rate for new users, indicating the proportion of new users from the current day who are still active on the second day.',
     newUser7dayRetentionRate: 'New user 7-day retention',
     newUser7dayRetentionRateDesc: 'The 7-day retention rate for new users, indicating the proportion of new users from the current day who are still active on the seventh day.',
     newUser30dayRetentionRate: 'New user 30-day retention',
-    newUser30dayRetentionRateDesc: 'The 30-day retention rate for new users, indicating the proportion of new users from the current day who are still active on the thirtieth day.'
+    newUser30dayRetentionRateDesc: 'The 30-day retention rate for new users, indicating the proportion of new users from the current day who are still active on the thirtieth day.',
+    stockUser1dayRetentionRate: 'Active user 1-day retention',
+    stockUser1dayRetentionRateDesc: 'The proportion of current active users still active on forecast day 1.',
+    stockUser7dayRetentionRate: 'Active user 7-day retention',
+    stockUser7dayRetentionRateDesc: 'The proportion of current active users still active on forecast day 7.',
+    stockUser30dayRetentionRate: 'Active user 30-day retention',
+    stockUser30dayRetentionRateDesc: 'The proportion of current active users still active on forecast day 30.'
   }
 }
 
 export const DAU = {
   zh: {
     title: 'DAU 趋势',
-    desc: '我们可以认为日活是“当天的新增用户和此前每一天新增用户在当天的留存用户之和”，因此我们可以用一个简单的公式表达日活：\n\nDAU(n)=A(n)+A(n-1)R(1)+A(n-2)R(2)+...+A(1)R(n-1)\n\n其中，DAU(n) 为第 n 天的日活，A(n) 为第 n 天的新增，R(n-1) 为新增用户在第 n-1 天后的留存率。\n\n如果我们假设，每日用户的新增是一个固定的数值 A，则公式可简写为：\n\nDAU(n)=A(1+R(1)+R(2)+...+R(n-1))',
+    desc: '预测 DAU 由两部分相加：预测起点的活跃用户按活跃用户留存曲线衰减，以及预测期内每日新增用户按新用户留存曲线累积。\n\nDAU(n)=S×Rs(n)+A×(1+Rn(1)+...+Rn(n-1))\n\n其中，S 为当前活跃用户数，Rs 为活跃用户留存率，A 为每日新增用户数，Rn 为新用户留存率。',
     dailyNewUserCount: '每日新用户数',
-    retainedUserCount: '已留存用户数',
-    retainedDesc: '长期留存的用户，不代表当前的 DAU',
+    retainedUserCount: '当前活跃用户数',
+    retainedDesc: '预测起点当天的活跃用户数，即当前 DAU；预测后会按活跃用户留存曲线逐日衰减',
     forecastDayCount: '预测天数',
     finalDAU: '最终 DAU 约为'
   },
   en: {
     title: 'DAU Trend',
-    desc: 'We can consider the daily active users as "the sum of new users for the day and the retained users from each previous day", therefore we can express the daily active users using a simple formula:\n\nDAU(n) = A(n) + A(n-1)R(1) + A(n-2)R(2) + ... + A(1)R(n-1)\n\nWhere, DAU(n) is the daily active users on day n, A(n) is the new users on day n, and R(n-1) is the retention rate after n-1 days.\n\nAssuming a constant number of new users each day, the formula can be simplified to:\n\nDAU(n) = A(1 + R(1) + R(2) + ... + R(n-1))',
+    desc: 'Forecast DAU is the sum of two parts: current active users declining along the active-user retention curve, and daily new-user cohorts accumulating along the new-user retention curve.\n\nDAU(n)=S×Rs(n)+A×(1+Rn(1)+...+Rn(n-1))\n\nS is current active-user DAU, Rs is active-user retention, A is daily new users, and Rn is new-user retention.',
     dailyNewUserCount: 'Daily new user count',
-    retainedUserCount: 'Retained user count',
-    retainedDesc: 'Refers to long-term retained users, not representing the current DAU',
+    retainedUserCount: 'Current active-user DAU',
+    retainedDesc: 'Active users on the forecast start date; this cohort declines along the active-user retention curve',
     forecastDayCount: 'Forecast Days',
     finalDAU: 'Final DAU is around'
   }
